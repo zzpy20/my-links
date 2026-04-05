@@ -1,5 +1,6 @@
 interface Env {
 	links_db: D1Database;
+	API_TOKEN: string;
   }
   
   function decodeEntities(str: string): string {
@@ -20,6 +21,36 @@ interface Env {
 	  };
 	} catch {
 	  return { title: 'YouTube Video', description: '', thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` };
+	}
+  }
+  
+  async function applyRules(url: string, existingTags: string, env: Env, title: string = '', caption: string = ''): Promise<string> {
+	try {
+	  const { results } = await env.links_db.prepare('SELECT * FROM tag_rules WHERE enabled = 1').all();
+	  if (!results.length) return existingTags;
+	  const domain = (() => { try { return new URL(url).hostname.replace('www.', ''); } catch { return ''; } })();
+	  const urlLower = url.toLowerCase();
+	  const titleLower = title.toLowerCase();
+	  const captionLower = caption.toLowerCase();
+	  const existing = existingTags ? existingTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+	  const toAdd: string[] = [];
+	  for (const rule of results as any[]) {
+		if (!rule.enabled) continue;
+		const patterns = rule.pattern.split(',').map((p: string) => p.trim().toLowerCase()).filter(Boolean);
+		let matched = false;
+		if (rule.type === 'domain') {
+		  matched = patterns.some((p: string) => domain.includes(p));
+		} else if (rule.type === 'keyword') {
+		  matched = patterns.some((p: string) => urlLower.includes(p) || titleLower.includes(p) || captionLower.includes(p));
+		}
+		if (matched) {
+		  const ruleTags = rule.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+		  ruleTags.forEach((t: string) => { if (!existing.includes(t) && !toAdd.includes(t)) toAdd.push(t); });
+		}
+	  }
+	  return [...existing, ...toAdd].join(', ');
+	} catch {
+	  return existingTags;
 	}
   }
   
@@ -73,6 +104,17 @@ interface Env {
   .view-btn.active { background: #0071e3; color: white; }
   .trash-btn { background: none; border: 1px solid #d2d2d7; border-radius: 8px; padding: 7px 10px; font-size: 16px; cursor: pointer; color: #6e6e73; }
   .trash-btn:hover { background: #fff0f0; border-color: #ff3b30; color: #ff3b30; }
+  .tab-bar { background: white; border-bottom: 1px solid #e5e5e5; display: flex; padding: 0 24px; transition: opacity 0.2s; }
+  .tab-bar.search-mode { opacity: 0.35; pointer-events: none; }
+  .tab { padding: 12px 20px; font-size: 14px; font-weight: 600; color: #6e6e73; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 6px; user-select: none; }
+  .tab:hover { color: #1d1d1f; }
+  .tab.active { color: #0071e3; border-bottom-color: #0071e3; }
+  .tab-count { background: #e5e5ea; color: #6e6e73; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+  .tab.active .tab-count { background: #0071e3; color: white; }
+  .search-hint { padding: 8px 24px; font-size: 12px; color: #6e6e73; background: #f5f5f7; border-bottom: 1px solid #e5e5e5; display: none; }
+  .search-hint.visible { display: block; }
+  .src-badge-archive { background: #ff9500; color: white; border-radius: 6px; padding: 2px 7px; font-size: 10px; font-weight: 700; display: inline-block; margin-left: 4px; vertical-align: middle; }
+  .src-badge-private { background: #5856d6; color: white; border-radius: 6px; padding: 2px 7px; font-size: 10px; font-weight: 700; display: inline-block; margin-left: 4px; vertical-align: middle; }
   .tag-panel { background: white; border-bottom: 1px solid #e5e5e5; }
   .tag-panel-header { display: flex; align-items: center; gap: 8px; padding: 10px 24px; cursor: pointer; user-select: none; }
   .tag-panel-header .lbl { font-size: 13px; font-weight: 600; color: #6e6e73; }
@@ -89,8 +131,8 @@ interface Env {
   .card { background: white; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); cursor: pointer; position: relative; }
   .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
   .card.unread { border-left: 3px solid #0071e3; }
-  .cthumb { width: 100%; height: 160px; object-fit: cover; display: block; background: #e5e5e5; }
-  .cnoimg { width: 100%; height: 160px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 40px; color: white; }
+  .cthumb { width: 100%; height: 160px; object-fit: cover; display: block; background: #e5e5e5; cursor: default; }
+  .cnoimg { width: 100%; height: 160px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 40px; color: white; cursor: default; }
   .cbody { padding: 14px; }
   .ctitle { font-size: 15px; font-weight: 600; line-height: 1.4; margin-bottom: 4px; }
   .cdesc { font-size: 13px; color: #6e6e73; line-height: 1.4; margin-bottom: 8px; }
@@ -98,7 +140,7 @@ interface Env {
   .nbox:hover { border-color: #d2d2d7; }
   .nph { color: #aeaeb2; }
   .curl { font-size: 12px; color: #0071e3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 8px; }
-  .ctags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .ctags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; align-items: center; }
   .tag { background: #f0f0f5; border-radius: 6px; padding: 2px 8px; font-size: 11px; color: #6e6e73; }
   .cdate { font-size: 11px; color: #aeaeb2; }
   .rbadge { position: absolute; top: 8px; left: 8px; background: #34c759; color: white; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
@@ -109,8 +151,8 @@ interface Env {
   .li { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); display: flex; gap: 14px; align-items: flex-start; padding: 14px; cursor: pointer; position: relative; }
   .li:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
   .li.unread { border-left: 3px solid #0071e3; }
-  .lthumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; flex-shrink: 0; display: block; }
-  .lnoimg { width: 80px; height: 80px; border-radius: 8px; flex-shrink: 0; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 28px; color: white; }
+  .lthumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; flex-shrink: 0; display: block; cursor: default; }
+  .lnoimg { width: 80px; height: 80px; border-radius: 8px; flex-shrink: 0; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 28px; color: white; cursor: default; }
   .lcon { flex: 1; min-width: 0; }
   .ltitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .ldesc { font-size: 13px; color: #6e6e73; margin-bottom: 6px; }
@@ -124,6 +166,9 @@ interface Env {
   .sel-info { font-size: 14px; font-weight: 600; }
   .sel-clear { background: none; color: rgba(255,255,255,0.8); border: none; font-size: 13px; cursor: pointer; margin-left: auto; }
   .sel-delete { background: #ff3b30; color: white; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  .sel-archive { background: #ff9500; color: white; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  .sel-restore { background: #34c759; color: white; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  .sel-private { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
   .sel-all-btn { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
   .tag-mgr-btn { background: white; color: #0071e3; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
   .tag-mgr-wrap { position: relative; }
@@ -166,6 +211,30 @@ interface Env {
   .bcancel { background: #f5f5f7; border: none; border-radius: 10px; padding: 8px 18px; font-size: 14px; cursor: pointer; }
   .bsave { background: #0071e3; color: white; border: none; border-radius: 10px; padding: 8px 18px; font-size: 14px; cursor: pointer; }
   .bdel { background: #ff3b30; color: white; border: none; border-radius: 10px; padding: 8px 18px; font-size: 14px; cursor: pointer; margin-right: auto; }
+  .rpanel { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: flex-start; justify-content: center; padding-top: 40px; }
+  .rpanel.open { display: flex; }
+  .rbox { background: white; border-radius: 16px; width: 90%; max-width: 640px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  .rhead { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid #e5e5e5; }
+  .rhead-title { font-size: 18px; font-weight: 700; }
+  .rhead-sub { font-size: 13px; color: #6e6e73; margin-left: 8px; }
+  .rhead-close { margin-left: auto; background: none; border: none; font-size: 20px; cursor: pointer; color: #6e6e73; }
+  .rlist { overflow-y: auto; padding: 12px 16px; flex: 1; }
+  .ritem { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f5f5f7; border-radius: 10px; margin-bottom: 8px; }
+  .ritem.disabled { opacity: 0.5; }
+  .rtype { background: #0071e3; color: white; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .rtype.keyword { background: #34c759; }
+  .rpattern { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rtags { font-size: 12px; color: #6e6e73; }
+  .rtoggle { background: none; border: 1px solid #d2d2d7; border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+  .rdel { background: none; border: none; color: #ff3b30; font-size: 16px; cursor: pointer; padding: 0 4px; }
+  .radd { padding: 16px; border-top: 1px solid #e5e5e5; }
+  .radd h4 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #1d1d1f; }
+  .radd-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .rselect { border: 1px solid #d2d2d7; border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; background: white; cursor: pointer; }
+  .rinput { border: 1px solid #d2d2d7; border-radius: 8px; padding: 8px 12px; font-size: 14px; outline: none; flex: 1; min-width: 120px; }
+  .rinput:focus { border-color: #0071e3; }
+  .radd-btn { background: #0071e3; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+  .rempty { text-align: center; padding: 40px; color: #aeaeb2; font-size: 14px; }
   .tpanel { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: flex-start; justify-content: center; padding-top: 40px; }
   .tpanel.open { display: flex; }
   .tbox { background: white; border-radius: 16px; width: 90%; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
@@ -184,6 +253,17 @@ interface Env {
   .ti-acts { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
   .trestore { background: #34c759; color: white; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600; }
   .tdelete { background: #ff3b30; color: white; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600; }
+  .priv-badge { background: #5856d6; color: white; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; display: inline-block; }
+  .preview-card { position: fixed; z-index: 500; background: white; border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,0.22); width: 320px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+  .preview-card.visible { opacity: 1; }
+  .preview-img { width: 100%; height: 180px; object-fit: cover; display: block; }
+  .preview-noimg { width: 100%; height: 180px; background: linear-gradient(135deg,#667eea,#764ba2); display: flex; align-items: center; justify-content: center; font-size: 48px; color: white; }
+  .preview-body { padding: 14px; }
+  .preview-title { font-size: 14px; font-weight: 700; line-height: 1.4; margin-bottom: 6px; color: #1d1d1f; }
+  .preview-desc { font-size: 12px; color: #6e6e73; line-height: 1.4; margin-bottom: 8px; }
+  .preview-notes { font-size: 12px; color: #3a3a3c; background: #f5f5f7; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; }
+  .preview-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .preview-url { font-size: 11px; color: #0071e3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   </style>
   </head>
   <body>
@@ -198,8 +278,15 @@ interface Env {
 	  <button class="view-btn" id="btn-list" onclick="setView('list')">&#9776;</button>
 	</div>
 	<button class="trash-btn" onclick="openTrash()">&#128465;</button>
+	<button class="trash-btn" onclick="openRules()" title="Auto-tag Rules">&#9881;</button>
   </header>
-  <div class="tag-panel">
+  <div class="tab-bar" id="tab-bar">
+	<div class="tab active" id="tab-all" onclick="switchTab('all')">&#128279; All <span class="tab-count" id="cnt-all">0</span></div>
+	<div class="tab" id="tab-archive" onclick="switchTab('archive')">&#128230; Archive <span class="tab-count" id="cnt-archive">0</span></div>
+	<div class="tab" id="tab-private" onclick="switchTab('private')">&#128274; Private <span class="tab-count" id="cnt-private">0</span></div>
+  </div>
+  <div class="search-hint" id="search-hint">&#128269; Searching across All, Archive &amp; Private</div>
+  <div class="tag-panel" id="tag-panel">
 	<div class="tag-panel-header" onclick="ttp()">
 	  <span class="lbl">TAGS</span>
 	  <span class="tcnt" id="tcnt">0</span>
@@ -226,12 +313,39 @@ interface Env {
 		</div>
 	  </div>
 	</div>
+	<button class="sel-archive" id="btn-sel-archive" onclick="archiveSelected()">&#128230; Archive Selected</button>
+	<button class="sel-restore" id="btn-sel-restore" onclick="restoreSelected()" style="display:none">&#8617; Restore Selected</button>
+	<button class="sel-private" id="btn-private" onclick="togglePrivateSelected()">&#128274; Make Private</button>
 	<button class="sel-delete" onclick="deleteSelected()">&#128465; Delete Selected</button>
 	<button class="sel-clear" onclick="clearSel()">&#x2715; Cancel</button>
   </div>
   <div id="con"></div>
   <div id="pager"></div>
   <div id="mr"></div>
+  <div class="preview-card" id="preview-card"></div>
+  <div class="rpanel" id="rpanel">
+	<div class="rbox">
+	  <div class="rhead">
+		<span class="rhead-title">&#9881; Auto-tag Rules</span>
+		<span class="rhead-sub">Applied when saving new links</span>
+		<button class="rhead-close" onclick="closeRules()">&#x2715;</button>
+	  </div>
+	  <div class="rlist" id="rlist"></div>
+	  <div class="radd">
+		<h4>Add New Rule</h4>
+		<div class="radd-row">
+		  <select class="rselect" id="r-type">
+			<option value="domain">Domain</option>
+			<option value="keyword">Keyword</option>
+		  </select>
+		  <input type="text" class="rinput" id="r-pattern" placeholder="e.g. bunnings.com.au, amazon.com">
+		  <span style="font-size:13px;color:#6e6e73;">&#8594; tags:</span>
+		  <input type="text" class="rinput" id="r-tags" placeholder="e.g. shopping, tools, buy">
+		  <button class="radd-btn" onclick="addRule()">+ Add</button>
+		</div>
+	  </div>
+	</div>
+  </div>
   <div class="tpanel" id="tpanel">
 	<div class="tbox">
 	  <div class="thead">
@@ -249,6 +363,31 @@ interface Env {
   <script>
   var cv = 'grid', cl = [], st, at = [], tpo = true, atm = {}, curPage = 1, perPage = 50, curSearch = '';
   var selectedIds = new Set();
+  var curTab = 'all';
+  var previewTimer = null;
+  
+  function switchTab(tab) {
+	curTab = tab;
+	curPage = 1;
+	curSearch = '';
+	selectedIds.clear();
+	document.getElementById('search').value = '';
+	document.getElementById('sclear').style.display = 'none';
+	at = [];
+	document.getElementById('tfi').style.display = 'none';
+	document.getElementById('tab-bar').classList.remove('search-mode');
+	document.getElementById('search-hint').classList.remove('visible');
+	['all','archive','private'].forEach(function(t) {
+	  document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+	});
+	document.getElementById('tag-panel').style.display = tab === 'all' ? '' : 'none';
+	document.getElementById('btn-sel-archive').style.display = tab === 'archive' ? 'none' : '';
+	document.getElementById('btn-sel-restore').style.display = tab === 'archive' ? '' : 'none';
+	document.getElementById('btn-private').style.display = tab === 'archive' ? 'none' : '';
+	updateSelBar();
+	load('', 1);
+	if (tab === 'all') loadTags();
+  }
   
   function ttp() {
 	tpo = !tpo;
@@ -268,13 +407,16 @@ interface Env {
 	if (page !== undefined) curPage = page;
 	var p = new URLSearchParams();
 	if (curSearch) p.set('search', curSearch);
-	if (at.length) p.set('tags', at.join(','));
+	if (at.length && curTab === 'all') p.set('tags', at.join(','));
 	p.set('page', String(curPage));
 	p.set('perPage', String(perPage));
+	var isSearchMode = curSearch.trim().length > 0;
+	p.set('view', isSearchMode ? 'search' : curTab);
 	fetch('/links?' + p).then(function(r) { return r.json(); }).then(function(d) {
 	  cl = d.results;
 	  render(d.results);
 	  renderPager(d.total);
+	  if (!isSearchMode) document.getElementById('cnt-' + curTab).textContent = d.total;
 	});
   }
   
@@ -315,6 +457,10 @@ interface Env {
   function dbs() {
 	var val = document.getElementById('search').value;
 	document.getElementById('sclear').style.display = val ? 'block' : 'none';
+	var isSearchMode = val.trim().length > 0;
+	document.getElementById('tab-bar').classList.toggle('search-mode', isSearchMode);
+	document.getElementById('search-hint').classList.toggle('visible', isSearchMode);
+	document.getElementById('tag-panel').style.display = isSearchMode ? 'none' : (curTab === 'all' ? '' : 'none');
 	clearTimeout(st);
 	st = setTimeout(function() { load(val, 1); }, 300);
   }
@@ -322,6 +468,9 @@ interface Env {
   function clearSearch() {
 	document.getElementById('search').value = '';
 	document.getElementById('sclear').style.display = 'none';
+	document.getElementById('tab-bar').classList.remove('search-mode');
+	document.getElementById('search-hint').classList.remove('visible');
+	document.getElementById('tag-panel').style.display = curTab === 'all' ? '' : 'none';
 	load('', 1);
   }
   
@@ -359,19 +508,105 @@ interface Env {
 	return h;
   }
   
-  function mkImg(thumb, grid) {
-	if (thumb) {
+  function showPreview(l, x, y) {
+	var card = document.getElementById('preview-card');
+	card.innerHTML = '';
+	if (l.thumbnail) {
 	  var img = document.createElement('img');
-	  img.className = grid ? 'cthumb' : 'lthumb';
-	  img.src = thumb;
-	  img.loading = 'lazy';
+	  img.className = 'preview-img';
+	  img.src = l.thumbnail;
 	  img.onerror = function() { this.style.display = 'none'; };
-	  return img;
+	  card.appendChild(img);
+	} else {
+	  var ni = document.createElement('div');
+	  ni.className = 'preview-noimg';
+	  ni.textContent = String.fromCodePoint(128279);
+	  card.appendChild(ni);
 	}
-	var d = document.createElement('div');
-	d.className = grid ? 'cnoimg' : 'lnoimg';
-	d.textContent = String.fromCodePoint(128279);
-	return d;
+	var body = document.createElement('div');
+	body.className = 'preview-body';
+	var titleEl = document.createElement('div');
+	titleEl.className = 'preview-title';
+	titleEl.textContent = l.title || l.url;
+	body.appendChild(titleEl);
+	if (l.description) {
+	  var descEl = document.createElement('div');
+	  descEl.className = 'preview-desc';
+	  descEl.textContent = l.description;
+	  body.appendChild(descEl);
+	}
+	if (l.notes && l.notes.trim()) {
+	  var notesEl = document.createElement('div');
+	  notesEl.className = 'preview-notes';
+	  notesEl.textContent = l.notes;
+	  body.appendChild(notesEl);
+	}
+	if (l.tags) {
+	  var tArr = l.tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+	  if (tArr.length) {
+		var tagsEl = document.createElement('div');
+		tagsEl.className = 'preview-tags';
+		tArr.forEach(function(t) { var s = document.createElement('span'); s.className = 'tag'; s.textContent = t; tagsEl.appendChild(s); });
+		body.appendChild(tagsEl);
+	  }
+	}
+	var urlEl = document.createElement('div');
+	urlEl.className = 'preview-url';
+	urlEl.textContent = l.url;
+	body.appendChild(urlEl);
+	card.appendChild(body);
+	// Position
+	var vw = window.innerWidth, vh = window.innerHeight;
+	var cw = 320, ch = 420;
+	var left = x + 16, top = y - 60;
+	if (left + cw > vw - 8) left = x - cw - 16;
+	if (top + ch > vh - 8) top = vh - ch - 8;
+	if (top < 8) top = 8;
+	card.style.left = left + 'px';
+	card.style.top = top + 'px';
+	card.classList.add('visible');
+  }
+  
+  function hidePreview() {
+	clearTimeout(previewTimer);
+	previewTimer = null;
+	document.getElementById('preview-card').classList.remove('visible');
+  }
+  
+  function mkImg(thumb, grid, l) {
+	var el;
+	if (thumb) {
+	  el = document.createElement('img');
+	  el.className = grid ? 'cthumb' : 'lthumb';
+	  el.src = thumb; el.loading = 'lazy';
+	  el.onerror = function() { this.style.display = 'none'; };
+	} else {
+	  el = document.createElement('div');
+	  el.className = grid ? 'cnoimg' : 'lnoimg';
+	  el.textContent = String.fromCodePoint(128279);
+	}
+	// Desktop: hover 1 second
+	el.addEventListener('mouseenter', function(e) {
+	  var x = e.clientX, y = e.clientY;
+	  previewTimer = setTimeout(function() { showPreview(l, x, y); }, 1000);
+	});
+	el.addEventListener('mousemove', function(e) {
+	  if (!document.getElementById('preview-card').classList.contains('visible')) {
+		clearTimeout(previewTimer);
+		var x = e.clientX, y = e.clientY;
+		previewTimer = setTimeout(function() { showPreview(l, x, y); }, 1000);
+	  }
+	});
+	el.addEventListener('mouseleave', function() { hidePreview(); });
+	// Mobile: long press 1 second
+	el.addEventListener('touchstart', function(e) {
+	  var t = e.touches[0];
+	  var x = t.clientX, y = t.clientY;
+	  previewTimer = setTimeout(function() { showPreview(l, x, y); }, 1000);
+	}, { passive: true });
+	el.addEventListener('touchend', function() { hidePreview(); });
+	el.addEventListener('touchmove', function() { clearTimeout(previewTimer); }, { passive: true });
+	return el;
   }
   
   function mkNotes(notes, id) {
@@ -386,15 +621,23 @@ interface Env {
   function mkActions(l) {
 	var div = document.createElement('div');
 	div.className = 'cact';
-	[
+	var btns = [
 	  { title: 'Edit', icon: '&#9998;', fn: function() { openEdit(l.id); } },
 	  { title: l.read ? 'Unread' : 'Read', icon: '&#10003;', fn: function() { togRead(l.id, l.read ? 0 : 1); } },
-	  { title: 'Delete', icon: '&#x2715;', fn: function() { delLink(l.id); } }
-	].forEach(function(b) {
+	];
+	var isArchived = !!l.archived_at;
+	var isPrivate = !!l.is_private;
+	var showRestore = (curTab === 'archive') || (curSearch && curSearch.trim() && isArchived);
+	if (showRestore) {
+	  btns.push({ title: 'Restore', icon: '&#8617;', fn: function() { unarchiveLink(l.id); } });
+	} else {
+	  btns.push({ title: isPrivate ? 'Make Public' : 'Make Private', icon: isPrivate ? '&#128275;' : '&#128274;', fn: function() { togPrivate(l.id, isPrivate ? 0 : 1); } });
+	  btns.push({ title: 'Archive', icon: '&#128230;', fn: function() { archiveLink(l.id); } });
+	}
+	btns.push({ title: 'Delete', icon: '&#x2715;', fn: function() { delLink(l.id); } });
+	btns.forEach(function(b) {
 	  var btn = document.createElement('button');
-	  btn.className = 'abtn';
-	  btn.title = b.title;
-	  btn.innerHTML = b.icon;
+	  btn.className = 'abtn'; btn.title = b.title; btn.innerHTML = b.icon;
 	  btn.onclick = function(e) { e.stopPropagation(); b.fn(); };
 	  div.appendChild(btn);
 	});
@@ -411,7 +654,6 @@ interface Env {
 	  var card = document.createElement('div');
 	  card.className = (isGrid ? 'card' : 'li') + (!l.read ? ' unread' : '') + (selectedIds.has(l.id) ? ' selected' : '');
 	  card.onclick = function() { window.open(l.url, '_blank'); };
-	  // Add checkbox only in list view
 	  if (!isGrid) {
 		var cbWrap = document.createElement('div');
 		cbWrap.className = 'li-cb-wrap';
@@ -423,21 +665,27 @@ interface Env {
 		  if (cb) cb.checked = isChecked;
 		}; })(l.id);
 		var cb = document.createElement('input');
-		cb.type = 'checkbox';
-		cb.className = 'li-cb';
-		cb.dataset.id = String(l.id);
-		cb.checked = selectedIds.has(l.id);
+		cb.type = 'checkbox'; cb.className = 'li-cb';
+		cb.dataset.id = String(l.id); cb.checked = selectedIds.has(l.id);
 		cbWrap.appendChild(cb);
 		card.appendChild(cbWrap);
 	  }
 	  card.appendChild(mkActions(l));
 	  if (l.read && isGrid) { var rb = document.createElement('div'); rb.className = 'rbadge'; rb.textContent = 'Read'; card.appendChild(rb); }
-	  card.appendChild(mkImg(l.thumbnail, isGrid));
+	  card.appendChild(mkImg(l.thumbnail, isGrid, l));
 	  var body = document.createElement('div');
 	  body.className = isGrid ? 'cbody' : 'lcon';
 	  var title = document.createElement('div');
 	  title.className = isGrid ? 'ctitle' : 'ltitle';
 	  title.textContent = l.title || l.url;
+	  // Search mode: show source badge
+	  if (curSearch && curSearch.trim()) {
+		if (l.archived_at) {
+		  var sb = document.createElement('span'); sb.className = 'src-badge-archive'; sb.textContent = '📦 Archive'; title.appendChild(sb);
+		} else if (l.is_private) {
+		  var sb2 = document.createElement('span'); sb2.className = 'src-badge-private'; sb2.textContent = '🔒 Private'; title.appendChild(sb2);
+		}
+	  }
 	  body.appendChild(title);
 	  if (l.description) { var desc = document.createElement('div'); desc.className = isGrid ? 'cdesc' : 'ldesc'; desc.textContent = l.description; body.appendChild(desc); }
 	  body.appendChild(mkNotes(l.notes, l.id));
@@ -445,12 +693,18 @@ interface Env {
 	  var dateStr = fmtDate(l.created_at);
 	  if (isGrid) {
 		var u = document.createElement('div'); u.className = 'curl'; u.textContent = dom(l.url); body.appendChild(u);
-		if (tgh) { var td = document.createElement('div'); td.className = 'ctags'; td.innerHTML = tgh; body.appendChild(td); }
+		var td = document.createElement('div'); td.className = 'ctags';
+		if (tgh) td.innerHTML = tgh;
+		if (l.is_private) { var pb = document.createElement('span'); pb.className = 'priv-badge'; pb.textContent = '\uD83D\uDD12 Private'; td.appendChild(pb); }
+		if (tgh || l.is_private) body.appendChild(td);
 		var dt = document.createElement('div'); dt.className = 'cdate'; dt.textContent = dateStr; body.appendChild(dt);
 	  } else {
 		var meta = document.createElement('div'); meta.className = 'lmeta';
 		var u2 = document.createElement('span'); u2.className = 'lurl'; u2.textContent = dom(l.url); meta.appendChild(u2);
-		if (tgh) { var td2 = document.createElement('div'); td2.innerHTML = tgh; meta.appendChild(td2); }
+		var td2 = document.createElement('div');
+		if (tgh) td2.innerHTML = tgh;
+		if (l.is_private) { var pb2 = document.createElement('span'); pb2.className = 'priv-badge'; pb2.textContent = '\uD83D\uDD12 Private'; td2.appendChild(pb2); }
+		if (tgh || l.is_private) meta.appendChild(td2);
 		var dt2 = document.createElement('span'); dt2.className = 'ldate'; dt2.textContent = dateStr; meta.appendChild(dt2);
 		body.appendChild(meta);
 	  }
@@ -490,7 +744,7 @@ interface Env {
 	  '<label>Thumbnail URL</label><input type="text" id="eth" value="' + tv + '" oninput="pvT()" placeholder="https://...">' +
 	  tphtml +
 	  '<button class="rfbtn" onclick="rfetch(' + id + ')">&#8635; Re-fetch title &amp; thumbnail</button>' +
-	  '<div class="mbtns"><button class="bdel" onclick="delLink(' + id + ')">Delete</button><button class="bcancel" onclick="clsM()">Cancel</button><button class="bsave" onclick="saveE(' + id + ')">Save</button></div>');
+	  '<div class="mbtns"><button class="bdel" onclick="delLink(' + id + ')">Delete</button><button class="bdel" style="background:#ff9500" onclick="archiveLink(' + id + ')">&#128230; Archive</button><button class="bcancel" onclick="clsM()">Cancel</button><button class="bsave" onclick="saveE(' + id + ')">Save</button></div>');
 	setTimeout(function() { var e = document.getElementById('et'); if (e) e.focus(); }, 50);
   }
   function pvT() {
@@ -533,33 +787,24 @@ interface Env {
 	  if (!items.length) { c.innerHTML = '<div class="empty"><p>Trash is empty</p></div>'; return; }
 	  c.innerHTML = '';
 	  items.forEach(function(l) {
-		var div = document.createElement('div');
-		div.className = 'ti';
+		var div = document.createElement('div'); div.className = 'ti';
 		if (l.thumbnail) {
-		  var img = document.createElement('img');
-		  img.className = 'ti-thumb';
-		  img.src = l.thumbnail;
-		  img.onerror = function() { this.style.display='none'; };
-		  div.appendChild(img);
+		  var img = document.createElement('img'); img.className = 'ti-thumb'; img.src = l.thumbnail;
+		  img.onerror = function() { this.style.display='none'; }; div.appendChild(img);
 		} else {
-		  var ni = document.createElement('div');
-		  ni.className = 'ti-noimg';
-		  ni.textContent = String.fromCodePoint(128279);
-		  div.appendChild(ni);
+		  var ni = document.createElement('div'); ni.className = 'ti-noimg'; ni.textContent = String.fromCodePoint(128279); div.appendChild(ni);
 		}
 		var info = document.createElement('div'); info.className = 'ti-info';
 		var tt = document.createElement('div'); tt.className = 'ti-title'; tt.textContent = l.title || l.url;
 		var tu = document.createElement('div'); tu.className = 'ti-url'; tu.textContent = dom(l.url);
 		var td = document.createElement('div'); td.className = 'ti-date'; td.textContent = 'Deleted: ' + fmtDate(l.deleted_at);
-		info.appendChild(tt); info.appendChild(tu); info.appendChild(td);
-		div.appendChild(info);
+		info.appendChild(tt); info.appendChild(tu); info.appendChild(td); div.appendChild(info);
 		var acts = document.createElement('div'); acts.className = 'ti-acts';
 		var rb = document.createElement('button'); rb.className = 'trestore'; rb.textContent = 'Restore';
 		rb.onclick = (function(id) { return function() { restoreLink(id); }; })(l.id);
 		var db = document.createElement('button'); db.className = 'tdelete'; db.textContent = 'Delete';
 		db.onclick = (function(id) { return function() { permDelete(id); }; })(l.id);
-		acts.appendChild(rb); acts.appendChild(db);
-		div.appendChild(acts);
+		acts.appendChild(rb); acts.appendChild(db); div.appendChild(acts);
 		c.appendChild(div);
 	  });
 	});
@@ -586,6 +831,25 @@ interface Env {
 	if (selectedIds.size > 0) {
 	  bar.classList.add('visible');
 	  info.textContent = selectedIds.size + ' selected';
+	  var ids = Array.from(selectedIds);
+	  var selectedLinks = ids.map(function(id) { return cl.find(function(x) { return x.id === id; }); }).filter(Boolean);
+	  var isSearchMode = curSearch && curSearch.trim().length > 0;
+	  var allArchived = selectedLinks.every(function(l) { return !!l.archived_at; });
+	  var archiveBtn = document.getElementById('btn-sel-archive');
+	  var restoreBtn = document.getElementById('btn-sel-restore');
+	  if (curTab === 'archive' || (isSearchMode && allArchived)) {
+		archiveBtn.style.display = 'none'; restoreBtn.style.display = '';
+	  } else {
+		archiveBtn.style.display = ''; restoreBtn.style.display = 'none';
+	  }
+	  var privBtn = document.getElementById('btn-private');
+	  privBtn.style.display = (curTab === 'archive' || (isSearchMode && allArchived)) ? 'none' : '';
+	  if (curTab === 'private') {
+		privBtn.textContent = '\uD83D\uDD13 Make Public';
+	  } else {
+		var allPrivate = selectedLinks.every(function(l) { return !!l.is_private; });
+		privBtn.textContent = allPrivate ? '\uD83D\uDD13 Make Public' : '\uD83D\uDD12 Make Private';
+	  }
 	} else {
 	  bar.classList.remove('visible');
 	}
@@ -594,161 +858,174 @@ interface Env {
   function toggleSel(id, checked) {
 	if (checked) selectedIds.add(id);
 	else selectedIds.delete(id);
-	var rows = document.querySelectorAll('.li');
-	rows.forEach(function(row) {
+	document.querySelectorAll('.li').forEach(function(row) {
 	  var cb = row.querySelector('.li-cb');
-	  if (cb && parseInt(cb.dataset.id) === id) {
-		cb.checked = checked;
-		row.classList.toggle('selected', checked);
-	  }
+	  if (cb && parseInt(cb.dataset.id) === id) { cb.checked = checked; row.classList.toggle('selected', checked); }
 	});
 	updateSelBar();
   }
   
   function selAll() {
 	cl.forEach(function(l) { selectedIds.add(l.id); });
-	document.querySelectorAll('.li-cb').forEach(function(cb) {
-	  cb.checked = true;
-	  cb.closest('.li').classList.add('selected');
-	});
+	document.querySelectorAll('.li-cb').forEach(function(cb) { cb.checked = true; cb.closest('.li').classList.add('selected'); });
 	updateSelBar();
   }
   
   function deselAll() {
 	cl.forEach(function(l) { selectedIds.delete(l.id); });
-	document.querySelectorAll('.li-cb').forEach(function(cb) {
-	  cb.checked = false;
-	  cb.closest('.li').classList.remove('selected');
-	});
+	document.querySelectorAll('.li-cb').forEach(function(cb) { cb.checked = false; cb.closest('.li').classList.remove('selected'); });
 	updateSelBar();
   }
   
   function clearSel() {
 	selectedIds.clear();
-	document.querySelectorAll('.li-cb').forEach(function(cb) {
-	  cb.checked = false;
-	  cb.closest('.li').classList.remove('selected');
-	});
-	document.getElementById('sel-tags').value = '';
+	document.querySelectorAll('.li-cb').forEach(function(cb) { cb.checked = false; cb.closest('.li').classList.remove('selected'); });
 	updateSelBar();
   }
   
   function toggleTagMgr() {
 	var dd = document.getElementById('tag-dropdown');
-	if (dd.style.display === 'none') {
-	  openTagMgr();
-	} else {
-	  dd.style.display = 'none';
-	}
+	if (dd.style.display === 'none') { openTagMgr(); } else { dd.style.display = 'none'; }
   }
   
   function openTagMgr() {
 	var dd = document.getElementById('tag-dropdown');
-	var list = document.getElementById('tag-dd-list');
 	dd.style.display = 'block';
 	document.getElementById('tag-dd-new').value = '';
-  
-	// Get all tags from atm (tag map)
 	var allTags = Object.keys(atm).sort();
-  
-	// For each tag, determine state across selected links
 	var selectedLinks = cl.filter(function(l) { return selectedIds.has(l.id); });
-  
+	var list = document.getElementById('tag-dd-list');
 	list.innerHTML = '';
-	if (!allTags.length) {
-	  list.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:#aeaeb2;">No tags yet</div>';
-	  return;
-	}
-  
+	if (!allTags.length) { list.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:#aeaeb2;">No tags yet</div>'; return; }
 	allTags.forEach(function(tag) {
-	  var countWith = selectedLinks.filter(function(l) {
-		return (l.tags || '').split(',').map(function(t) { return t.trim(); }).indexOf(tag) >= 0;
-	  }).length;
+	  var countWith = selectedLinks.filter(function(l) { return (l.tags||'').split(',').map(function(t){return t.trim();}).indexOf(tag)>=0; }).length;
 	  var total = selectedLinks.length;
-	  var checked = countWith === total;
-	  var indeterminate = countWith > 0 && countWith < total;
-  
-	  var item = document.createElement('div');
-	  item.className = 'tag-dd-item';
-  
-	  var cb = document.createElement('input');
-	  cb.type = 'checkbox';
-	  cb.id = 'tddc-' + tag;
-	  cb.checked = checked;
-	  cb.indeterminate = indeterminate;
+	  var item = document.createElement('div'); item.className = 'tag-dd-item';
+	  var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'tddc-' + tag;
+	  cb.checked = countWith === total; cb.indeterminate = countWith > 0 && countWith < total;
 	  cb.onchange = (function(t) { return function(e) { batchToggleTag(t, e.target.checked); }; })(tag);
-  
-	  var lbl = document.createElement('label');
-	  lbl.htmlFor = 'tddc-' + tag;
-	  lbl.textContent = tag;
-  
-	  var cnt = document.createElement('span');
-	  cnt.className = 'tag-count';
-	  cnt.textContent = countWith + '/' + total;
-  
-	  item.appendChild(cb);
-	  item.appendChild(lbl);
-	  item.appendChild(cnt);
+	  var lbl = document.createElement('label'); lbl.htmlFor = 'tddc-' + tag; lbl.textContent = tag;
+	  var cnt = document.createElement('span'); cnt.className = 'tag-count'; cnt.textContent = countWith + '/' + total;
+	  item.appendChild(cb); item.appendChild(lbl); item.appendChild(cnt);
 	  list.appendChild(item);
 	});
   }
   
   function batchToggleTag(tag, add) {
-	var ids = Array.from(selectedIds);
-	var mode = add ? 'append' : 'remove';
-	fetch('/links/batch-tag', {
-	  method: 'PATCH',
-	  headers: { 'Content-Type': 'application/json' },
-	  body: JSON.stringify({ ids: ids, tags: tag, mode: mode })
-	}).then(function() {
-	  // Update local data
+	fetch('/links/batch-tag', {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:Array.from(selectedIds),tags:tag,mode:add?'append':'remove'})})
+	.then(function() {
 	  cl.forEach(function(l) {
 		if (!selectedIds.has(l.id)) return;
-		var tags = l.tags ? l.tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
-		if (add) {
-		  if (tags.indexOf(tag) < 0) tags.push(tag);
-		} else {
-		  tags = tags.filter(function(t) { return t !== tag; });
-		}
+		var tags = l.tags ? l.tags.split(',').map(function(t){return t.trim();}).filter(Boolean) : [];
+		if (add) { if (tags.indexOf(tag)<0) tags.push(tag); } else { tags = tags.filter(function(t){return t!==tag;}); }
 		l.tags = tags.join(', ');
 	  });
-	  render(cl);
-	  loadTags();
-	  // Refresh dropdown
-	  openTagMgr();
+	  render(cl); loadTags(); openTagMgr();
 	});
   }
   
   function deleteSelected() {
 	if (selectedIds.size === 0) return;
 	if (!confirm('Move ' + selectedIds.size + ' item(s) to trash?')) return;
-	var ids = Array.from(selectedIds);
-	var promises = ids.map(function(id) {
-	  return fetch('/links/' + id, { method: 'DELETE' });
-	});
-	Promise.all(promises).then(function() {
-	  clearSel();
-	  load(curSearch, curPage);
-	  loadTags();
-	});
+	Promise.all(Array.from(selectedIds).map(function(id){return fetch('/links/'+id,{method:'DELETE'});}))
+	.then(function() { clearSel(); load(curSearch, curPage); loadTags(); });
   }
   
   function addNewTag() {
 	var input = document.getElementById('tag-dd-new');
 	var tag = input.value.trim();
-	if (!tag) return;
-	if (selectedIds.size === 0) return;
-	batchToggleTag(tag, true);
-	input.value = '';
+	if (!tag || selectedIds.size === 0) return;
+	batchToggleTag(tag, true); input.value = '';
   }
   
-  // Close tag dropdown when clicking outside
+  function archiveLink(id) {
+	clsM();
+	if (!confirm('Archive this link? You can restore it later.')) return;
+	fetch('/links/' + id + '/archive', {method:'POST'}).then(function() { load(curSearch, curPage); loadTags(); });
+  }
+  
+  function unarchiveLink(id) {
+	clsM();
+	fetch('/links/' + id + '/unarchive', {method:'POST'}).then(function() { load(curSearch, curPage); });
+  }
+  
+  function archiveSelected() {
+	if (selectedIds.size === 0) return;
+	if (!confirm('Archive ' + selectedIds.size + ' selected link(s)?')) return;
+	fetch('/links/batch-archive', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:Array.from(selectedIds)})})
+	.then(function() { clearSel(); load(curSearch, curPage); loadTags(); });
+  }
+  
+  function restoreSelected() {
+	if (selectedIds.size === 0) return;
+	if (!confirm('Restore ' + selectedIds.size + ' selected link(s)?')) return;
+	Promise.all(Array.from(selectedIds).map(function(id){return fetch('/links/'+id+'/unarchive',{method:'POST'});}))
+	.then(function() { clearSel(); load(curSearch, curPage); });
+  }
+  
+  function togPrivate(id, val) {
+	fetch('/links/' + id + '/private', {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_private:val})})
+	.then(function() { cl.forEach(function(x){if(x.id===id)x.is_private=val;}); render(cl); });
+  }
+  
+  function togglePrivateSelected() {
+	if (selectedIds.size === 0) return;
+	var ids = Array.from(selectedIds);
+	var newVal;
+	if (curTab === 'private') {
+	  newVal = 0;
+	} else {
+	  var allPrivate = ids.every(function(id){var l=cl.find(function(x){return x.id===id;});return l&&l.is_private;});
+	  newVal = allPrivate ? 0 : 1;
+	}
+	if (!confirm('Make ' + ids.length + ' item(s) ' + (newVal ? 'private?' : 'public?'))) return;
+	Promise.all(ids.map(function(id){return fetch('/links/'+id+'/private',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_private:newVal})});}))
+	.then(function() { clearSel(); load(curSearch, curPage); });
+  }
+  
+  function openRules() { document.getElementById('rpanel').classList.add('open'); loadRules(); }
+  function closeRules() { document.getElementById('rpanel').classList.remove('open'); }
+  
+  function loadRules() {
+	fetch('/rules').then(function(r){return r.json();}).then(function(rules) {
+	  var c = document.getElementById('rlist');
+	  if (!rules.length) { c.innerHTML = '<div class="rempty">No rules yet. Add one below to auto-tag links when saving.</div>'; return; }
+	  c.innerHTML = '';
+	  rules.forEach(function(r) {
+		var div = document.createElement('div'); div.className = 'ritem' + (r.enabled ? '' : ' disabled');
+		var type = document.createElement('span'); type.className = 'rtype' + (r.type==='keyword'?' keyword':''); type.textContent = r.type; div.appendChild(type);
+		var pat = document.createElement('div'); pat.className = 'rpattern'; pat.textContent = r.pattern; pat.title = r.pattern; div.appendChild(pat);
+		var tags = document.createElement('div'); tags.className = 'rtags'; tags.textContent = '\u2192 ' + r.tags; div.appendChild(tags);
+		var tog = document.createElement('button'); tog.className = 'rtoggle'; tog.textContent = r.enabled ? 'On' : 'Off';
+		tog.onclick = (function(id,en){return function(){toggleRule(id,en?0:1);};})(r.id,r.enabled); div.appendChild(tog);
+		var del = document.createElement('button'); del.className = 'rdel'; del.innerHTML = '&#x2715;';
+		del.onclick = (function(id){return function(){deleteRule(id);};})(r.id); div.appendChild(del);
+		c.appendChild(div);
+	  });
+	});
+  }
+  
+  function addRule() {
+	var type = document.getElementById('r-type').value;
+	var pattern = document.getElementById('r-pattern').value.trim();
+	var tags = document.getElementById('r-tags').value.trim();
+	if (!pattern || !tags) { alert('Please fill in both pattern and tags.'); return; }
+	fetch('/rules', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:type,pattern:pattern,tags:tags})})
+	.then(function() { document.getElementById('r-pattern').value=''; document.getElementById('r-tags').value=''; loadRules(); });
+  }
+  
+  function toggleRule(id, enabled) {
+	fetch('/rules/'+id, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})}).then(function(){loadRules();});
+  }
+  
+  function deleteRule(id) {
+	if (!confirm('Delete this rule?')) return;
+	fetch('/rules/'+id, {method:'DELETE'}).then(function(){loadRules();});
+  }
+  
   document.addEventListener('click', function(e) {
 	var wrap = document.querySelector('.tag-mgr-wrap');
-	if (wrap && !wrap.contains(e.target)) {
-	  var dd = document.getElementById('tag-dropdown');
-	  if (dd) dd.style.display = 'none';
-	}
+	if (wrap && !wrap.contains(e.target)) { var dd = document.getElementById('tag-dropdown'); if (dd) dd.style.display='none'; }
   });
   
   loadTags();
@@ -769,14 +1046,31 @@ interface Env {
 	  if (request.method === 'OPTIONS') {
 		return new Response(null, { headers: corsHeaders });
 	  }
+  
+	  const authHeader = request.headers.get('Authorization') || '';
+	  const tokenFromHeader = authHeader.replace('Bearer ', '');
+	  const tokenFromQuery = url.searchParams.get('token') || '';
+	  const hasValidToken = env.API_TOKEN && (tokenFromHeader === env.API_TOKEN || tokenFromQuery === env.API_TOKEN);
+	  const cfAccess = request.headers.get('Cookie') || '';
+	  const hasAccessCookie = cfAccess.includes('CF_Authorization');
+  
+	  if (request.method !== 'GET' && !hasValidToken && !hasAccessCookie) {
+		return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+		  status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+		});
+	  }
+  
 	  if (request.method === 'GET' && path === '/tags') {
-		const { results } = await env.links_db.prepare('SELECT tags FROM links WHERE tags IS NOT NULL AND tags != "" AND deleted_at IS NULL').all();
+		const { results } = await env.links_db.prepare(
+		  'SELECT tags FROM links WHERE tags IS NOT NULL AND tags != "" AND deleted_at IS NULL AND archived_at IS NULL AND is_private = 0'
+		).all();
 		const tagMap: Record<string, number> = {};
 		results.forEach((row: any) => {
 		  if (row.tags) row.tags.split(',').forEach((t: string) => { const tag = t.trim(); if (tag) tagMap[tag] = (tagMap[tag] || 0) + 1; });
 		});
 		return new Response(JSON.stringify(tagMap), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 	  }
+  
 	  if (request.method === 'GET' && path === '/add') {
 		const pageUrl = url.searchParams.get('url') || '';
 		const pageTitle = url.searchParams.get('title') || '';
@@ -809,7 +1103,7 @@ interface Env {
   <body>
   <div class="card">
 	<h2>&#128204; Save Link</h2>
-	<div class="ptitle" id="pt">${pageTitle}</div>
+	<div class="ptitle">${pageTitle}</div>
 	<div class="purl">${pageUrl}</div>
 	<label>Tags (comma separated)</label>
 	<input type="text" id="tags" placeholder="e.g. tech, read-later" autofocus>
@@ -821,7 +1115,7 @@ interface Env {
 	</div>
 	<div class="status" id="status"></div>
   </div>
-  <script>
+  <scr` + `ipt>
   var pu = decodeURIComponent('${encodedUrl}');
   var pt = decodeURIComponent('${encodedTitle}');
   document.getElementById('tags').addEventListener('keydown', function(e) { if (e.key === 'Enter') document.getElementById('caption').focus(); });
@@ -832,46 +1126,73 @@ interface Env {
 	var btn = document.querySelector('.bsave');
 	btn.textContent = 'Saving...'; btn.disabled = true;
 	fetch('/links', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pu,title:pt,tags:tags,caption:caption})})
-	.then(function(r) { return r.json(); }).then(function(d) {
+	.then(function(r){return r.json();}).then(function(d) {
 	  var s = document.getElementById('status');
 	  s.className = 'status ok'; s.textContent = 'Saved: ' + d.title;
-	  setTimeout(function() { window.close(); }, 1200);
+	  setTimeout(function(){window.close();}, 1200);
 	}).catch(function() {
 	  var s = document.getElementById('status');
 	  s.className = 'status err'; s.textContent = 'Error saving link';
 	  btn.textContent = 'Save'; btn.disabled = false;
 	});
   }
-  </script>
+  <\/script>
   </body>
   </html>`;
 		return new Response(addHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 	  }
+  
 	  if (request.method === 'POST' && path === '/links') {
 		const body = await request.json() as { url: string; tags?: string; caption?: string; title?: string };
 		if (!body.url) return new Response(JSON.stringify({ error: 'url required' }), { status: 400, headers: corsHeaders });
 		const cleanUrl = decodeEntities(body.url);
 		const meta = await getMeta(cleanUrl);
 		const finalTitle = body.title ? decodeEntities(body.title) : (meta.title || cleanUrl);
+		const autoTags = await applyRules(cleanUrl, body.tags || '', env, meta.title || '', body.caption || '');
 		await env.links_db.prepare('INSERT INTO links (url, title, description, thumbnail, tags) VALUES (?, ?, ?, ?, ?)')
-		  .bind(cleanUrl, finalTitle, body.caption || meta.description || '', meta.thumbnail || '', body.tags || '').run();
+		  .bind(cleanUrl, finalTitle, body.caption || meta.description || '', meta.thumbnail || '', autoTags).run();
 		return new Response(JSON.stringify({ ok: true, title: finalTitle }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 	  }
+  
 	  if (request.method === 'GET' && path === '/links') {
 		const search = url.searchParams.get('search') || '';
 		const tagsParam = url.searchParams.get('tags') || '';
 		const page = parseInt(url.searchParams.get('page') || '1');
 		const pp = parseInt(url.searchParams.get('perPage') || '50');
+		const view = url.searchParams.get('view') || 'all';
+  
 		const conditions: string[] = ['deleted_at IS NULL'];
 		const params: string[] = [];
-		if (search) { conditions.push('(title LIKE ? OR description LIKE ? OR url LIKE ? OR notes LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
-		if (tagsParam) { tagsParam.split(',').map((t: string) => t.trim()).filter(Boolean).forEach((tag: string) => { conditions.push('tags LIKE ?'); params.push(`%${tag}%`); }); }
+  
+		if (view === 'archive') {
+		  conditions.push('archived_at IS NOT NULL');
+		} else if (view === 'private') {
+		  conditions.push('archived_at IS NULL');
+		  conditions.push('is_private = 1');
+		} else if (view === 'search') {
+		  // global search: only exclude deleted
+		} else {
+		  conditions.push('archived_at IS NULL');
+		  conditions.push('is_private = 0');
+		}
+  
+		if (search) {
+		  conditions.push('(title LIKE ? OR description LIKE ? OR url LIKE ? OR notes LIKE ?)');
+		  params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+		}
+		if (tagsParam && view === 'all') {
+		  tagsParam.split(',').map((t: string) => t.trim()).filter(Boolean).forEach((tag: string) => {
+			conditions.push('tags LIKE ?'); params.push(`%${tag}%`);
+		  });
+		}
+  
 		const where = ' WHERE ' + conditions.join(' AND ');
 		const countRow = await env.links_db.prepare('SELECT COUNT(*) as total FROM links' + where).bind(...params).first() as any;
 		const total = countRow ? countRow.total : 0;
 		const { results } = await env.links_db.prepare('SELECT * FROM links' + where + ' ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(...params, pp, (page-1)*pp).all();
 		return new Response(JSON.stringify({ results, total, page, perPage: pp }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 	  }
+  
 	  if (request.method === 'GET' && path === '/trash') {
 		const { results } = await env.links_db.prepare('SELECT * FROM links WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC').all();
 		return new Response(JSON.stringify(results), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -884,17 +1205,42 @@ interface Env {
 		await env.links_db.prepare('DELETE FROM links WHERE deleted_at IS NOT NULL').run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  if (request.method === 'POST' && path.includes('/restore')) {
+  
+	  if (request.method === 'POST' && path === '/links/batch-archive') {
+		const body = await request.json() as { ids: number[] };
+		for (const id of body.ids) {
+		  await env.links_db.prepare("UPDATE links SET archived_at = datetime('now') WHERE id = ?").bind(id).run();
+		}
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+  
+	  if (request.method === 'PATCH' && path === '/links/batch-tag') {
+		const body = await request.json() as { ids: number[]; tags: string; mode: string };
+		for (const id of body.ids) {
+		  const row = await env.links_db.prepare('SELECT tags FROM links WHERE id = ?').bind(id).first() as any;
+		  if (!row) continue;
+		  const existing = row.tags ? row.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+		  const incoming = body.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+		  let newTags: string;
+		  if (body.mode === 'replace') { newTags = incoming.join(', '); }
+		  else if (body.mode === 'remove') { newTags = existing.filter((t: string) => !incoming.includes(t)).join(', '); }
+		  else { newTags = Array.from(new Set([...existing, ...incoming])).join(', '); }
+		  await env.links_db.prepare('UPDATE links SET tags = ? WHERE id = ?').bind(newTags, id).run();
+		}
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+  
+	  if (request.method === 'POST' && path.match(/^\/links\/\d+\/restore$/)) {
 		const id = path.split('/')[2];
 		await env.links_db.prepare('UPDATE links SET deleted_at = NULL WHERE id = ?').bind(id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  if (request.method === 'DELETE' && path.includes('/permanent')) {
+	  if (request.method === 'DELETE' && path.match(/^\/links\/\d+\/permanent$/)) {
 		const id = path.split('/')[2];
 		await env.links_db.prepare('DELETE FROM links WHERE id = ?').bind(id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  if (request.method === 'POST' && path.includes('/refetch')) {
+	  if (request.method === 'POST' && path.match(/^\/links\/\d+\/refetch$/)) {
 		const id = path.split('/')[2];
 		const row = await env.links_db.prepare('SELECT url FROM links WHERE id = ?').bind(id).first() as any;
 		if (!row) return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: corsHeaders });
@@ -906,50 +1252,69 @@ interface Env {
 		if (updates.length) await env.links_db.prepare('UPDATE links SET ' + updates.join(', ') + ' WHERE id = ?').bind(...vals, id).run();
 		return new Response(JSON.stringify({ ok: true, thumbnail: meta.thumbnail, title: meta.title }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 	  }
-	  if (request.method === 'PATCH' && path.includes('/notes')) {
+	  if (request.method === 'PATCH' && path.match(/^\/links\/\d+\/notes$/)) {
 		const id = path.split('/')[2];
 		const body = await request.json() as { notes: string };
 		await env.links_db.prepare('UPDATE links SET notes = ? WHERE id = ?').bind(body.notes, id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  if (request.method === 'PATCH' && path.includes('/edit')) {
+	  if (request.method === 'PATCH' && path.match(/^\/links\/\d+\/edit$/)) {
 		const id = path.split('/')[2];
 		const body = await request.json() as { tags: string; description: string; thumbnail: string };
 		await env.links_db.prepare('UPDATE links SET tags = ?, description = ?, thumbnail = ? WHERE id = ?').bind(body.tags, body.description, body.thumbnail, id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  if (request.method === 'PATCH' && path.includes('/read')) {
+	  if (request.method === 'PATCH' && path.match(/^\/links\/\d+\/read$/)) {
 		const id = path.split('/')[2];
 		const body = await request.json() as { read: number };
 		await env.links_db.prepare('UPDATE links SET read = ? WHERE id = ?').bind(body.read, id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  if (request.method === 'DELETE' && path.startsWith('/links/')) {
+	  if (request.method === 'POST' && path.match(/^\/links\/\d+\/archive$/)) {
+		const id = path.split('/')[2];
+		await env.links_db.prepare("UPDATE links SET archived_at = datetime('now') WHERE id = ?").bind(id).run();
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+	  if (request.method === 'POST' && path.match(/^\/links\/\d+\/unarchive$/)) {
+		const id = path.split('/')[2];
+		await env.links_db.prepare('UPDATE links SET archived_at = NULL WHERE id = ?').bind(id).run();
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+	  if (request.method === 'PATCH' && path.match(/^\/links\/\d+\/private$/)) {
+		const id = path.split('/')[2];
+		const body = await request.json() as { is_private: number };
+		await env.links_db.prepare('UPDATE links SET is_private = ? WHERE id = ?').bind(body.is_private, id).run();
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+	  if (request.method === 'DELETE' && path.match(/^\/links\/\d+$/)) {
 		const id = path.split('/')[2];
 		await env.links_db.prepare("UPDATE links SET deleted_at = datetime('now') WHERE id = ?").bind(id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
-	  // PATCH /links/batch-tag
-	  if (request.method === 'PATCH' && path === '/links/batch-tag') {
-		const body = await request.json() as { ids: number[]; tags: string; mode: string };
-		for (const id of body.ids) {
-		  const row = await env.links_db.prepare('SELECT tags FROM links WHERE id = ?').bind(id).first() as any;
-		  if (!row) continue;
-		  const existing = row.tags ? row.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
-		  const incoming = body.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
-		  let newTags: string;
-		  if (body.mode === 'replace') {
-			newTags = incoming.join(', ');
-		  } else if (body.mode === 'remove') {
-			const filtered = existing.filter((t: string) => !incoming.includes(t));
-			newTags = filtered.join(', ');
-		  } else {
-			// append - merge without duplicates
-			const merged = Array.from(new Set([...existing, ...incoming]));
-			newTags = merged.join(', ');
-		  }
-		  await env.links_db.prepare('UPDATE links SET tags = ? WHERE id = ?').bind(newTags, id).run();
-		}
+  
+	  if (request.method === 'GET' && path === '/rules') {
+		const { results } = await env.links_db.prepare('SELECT * FROM tag_rules ORDER BY created_at DESC').all();
+		return new Response(JSON.stringify(results), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+	  }
+	  if (request.method === 'POST' && path === '/rules') {
+		const body = await request.json() as { type: string; pattern: string; tags: string };
+		await env.links_db.prepare('INSERT INTO tag_rules (type, pattern, tags) VALUES (?, ?, ?)').bind(body.type, body.pattern, body.tags).run();
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+	  if (request.method === 'PATCH' && path.match(/^\/rules\/\d+$/)) {
+		const id = path.split('/')[2];
+		const body = await request.json() as { type?: string; pattern?: string; tags?: string; enabled?: number };
+		const fields: string[] = [], vals: any[] = [];
+		if (body.type !== undefined) { fields.push('type = ?'); vals.push(body.type); }
+		if (body.pattern !== undefined) { fields.push('pattern = ?'); vals.push(body.pattern); }
+		if (body.tags !== undefined) { fields.push('tags = ?'); vals.push(body.tags); }
+		if (body.enabled !== undefined) { fields.push('enabled = ?'); vals.push(body.enabled); }
+		if (fields.length) await env.links_db.prepare('UPDATE tag_rules SET ' + fields.join(', ') + ' WHERE id = ?').bind(...vals, id).run();
+		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+	  }
+	  if (request.method === 'DELETE' && path.match(/^\/rules\/\d+$/)) {
+		const id = path.split('/')[2];
+		await env.links_db.prepare('DELETE FROM tag_rules WHERE id = ?').bind(id).run();
 		return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
 	  }
   
