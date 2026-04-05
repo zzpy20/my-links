@@ -131,8 +131,8 @@ interface Env {
   .card { background: white; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); cursor: pointer; position: relative; }
   .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
   .card.unread { border-left: 3px solid #0071e3; }
-  .cthumb { width: 100%; height: 160px; object-fit: cover; display: block; background: #e5e5e5; cursor: default; }
-  .cnoimg { width: 100%; height: 160px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 40px; color: white; cursor: default; }
+  .cthumb { width: 100%; height: 160px; object-fit: cover; display: block; background: #e5e5e5; }
+  .cnoimg { width: 100%; height: 160px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 40px; color: white; }
   .cbody { padding: 14px; }
   .ctitle { font-size: 15px; font-weight: 600; line-height: 1.4; margin-bottom: 4px; }
   .cdesc { font-size: 13px; color: #6e6e73; line-height: 1.4; margin-bottom: 8px; }
@@ -151,8 +151,8 @@ interface Env {
   .li { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); display: flex; gap: 14px; align-items: flex-start; padding: 14px; cursor: pointer; position: relative; }
   .li:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
   .li.unread { border-left: 3px solid #0071e3; }
-  .lthumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; flex-shrink: 0; display: block; cursor: default; }
-  .lnoimg { width: 80px; height: 80px; border-radius: 8px; flex-shrink: 0; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 28px; color: white; cursor: default; }
+  .lthumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; flex-shrink: 0; display: block; }
+  .lnoimg { width: 80px; height: 80px; border-radius: 8px; flex-shrink: 0; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 28px; color: white; }
   .lcon { flex: 1; min-width: 0; }
   .ltitle { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .ldesc { font-size: 13px; color: #6e6e73; margin-bottom: 6px; }
@@ -254,16 +254,6 @@ interface Env {
   .trestore { background: #34c759; color: white; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600; }
   .tdelete { background: #ff3b30; color: white; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600; }
   .priv-badge { background: #5856d6; color: white; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; display: inline-block; }
-  .preview-card { position: fixed; z-index: 500; background: white; border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,0.22); width: 320px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
-  .preview-card.visible { opacity: 1; }
-  .preview-img { width: 100%; height: 180px; object-fit: cover; display: block; }
-  .preview-noimg { width: 100%; height: 180px; background: linear-gradient(135deg,#667eea,#764ba2); display: flex; align-items: center; justify-content: center; font-size: 48px; color: white; }
-  .preview-body { padding: 14px; }
-  .preview-title { font-size: 14px; font-weight: 700; line-height: 1.4; margin-bottom: 6px; color: #1d1d1f; }
-  .preview-desc { font-size: 12px; color: #6e6e73; line-height: 1.4; margin-bottom: 8px; }
-  .preview-notes { font-size: 12px; color: #3a3a3c; background: #f5f5f7; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; }
-  .preview-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-  .preview-url { font-size: 11px; color: #0071e3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   </style>
   </head>
   <body>
@@ -322,7 +312,6 @@ interface Env {
   <div id="con"></div>
   <div id="pager"></div>
   <div id="mr"></div>
-  <div class="preview-card" id="preview-card"></div>
   <div class="rpanel" id="rpanel">
 	<div class="rbox">
 	  <div class="rhead">
@@ -364,7 +353,6 @@ interface Env {
   var cv = 'grid', cl = [], st, at = [], tpo = true, atm = {}, curPage = 1, perPage = 50, curSearch = '';
   var selectedIds = new Set();
   var curTab = 'all';
-  var previewTimer = null;
   
   function switchTab(tab) {
 	curTab = tab;
@@ -508,105 +496,18 @@ interface Env {
 	return h;
   }
   
-  function showPreview(l, x, y) {
-	var card = document.getElementById('preview-card');
-	card.innerHTML = '';
-	if (l.thumbnail) {
-	  var img = document.createElement('img');
-	  img.className = 'preview-img';
-	  img.src = l.thumbnail;
-	  img.onerror = function() { this.style.display = 'none'; };
-	  card.appendChild(img);
-	} else {
-	  var ni = document.createElement('div');
-	  ni.className = 'preview-noimg';
-	  ni.textContent = String.fromCodePoint(128279);
-	  card.appendChild(ni);
-	}
-	var body = document.createElement('div');
-	body.className = 'preview-body';
-	var titleEl = document.createElement('div');
-	titleEl.className = 'preview-title';
-	titleEl.textContent = l.title || l.url;
-	body.appendChild(titleEl);
-	if (l.description) {
-	  var descEl = document.createElement('div');
-	  descEl.className = 'preview-desc';
-	  descEl.textContent = l.description;
-	  body.appendChild(descEl);
-	}
-	if (l.notes && l.notes.trim()) {
-	  var notesEl = document.createElement('div');
-	  notesEl.className = 'preview-notes';
-	  notesEl.textContent = l.notes;
-	  body.appendChild(notesEl);
-	}
-	if (l.tags) {
-	  var tArr = l.tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
-	  if (tArr.length) {
-		var tagsEl = document.createElement('div');
-		tagsEl.className = 'preview-tags';
-		tArr.forEach(function(t) { var s = document.createElement('span'); s.className = 'tag'; s.textContent = t; tagsEl.appendChild(s); });
-		body.appendChild(tagsEl);
-	  }
-	}
-	var urlEl = document.createElement('div');
-	urlEl.className = 'preview-url';
-	urlEl.textContent = l.url;
-	body.appendChild(urlEl);
-	card.appendChild(body);
-	// Position
-	var vw = window.innerWidth, vh = window.innerHeight;
-	var cw = 320, ch = 420;
-	var left = x + 16, top = y - 60;
-	if (left + cw > vw - 8) left = x - cw - 16;
-	if (top + ch > vh - 8) top = vh - ch - 8;
-	if (top < 8) top = 8;
-	card.style.left = left + 'px';
-	card.style.top = top + 'px';
-	card.classList.add('visible');
-  }
-  
-  function hidePreview() {
-	clearTimeout(previewTimer);
-	previewTimer = null;
-	document.getElementById('preview-card').classList.remove('visible');
-  }
-  
-  function mkImg(thumb, grid, l) {
-	var el;
+  function mkImg(thumb, grid) {
 	if (thumb) {
-	  el = document.createElement('img');
-	  el.className = grid ? 'cthumb' : 'lthumb';
-	  el.src = thumb; el.loading = 'lazy';
-	  el.onerror = function() { this.style.display = 'none'; };
-	} else {
-	  el = document.createElement('div');
-	  el.className = grid ? 'cnoimg' : 'lnoimg';
-	  el.textContent = String.fromCodePoint(128279);
+	  var img = document.createElement('img');
+	  img.className = grid ? 'cthumb' : 'lthumb';
+	  img.src = thumb; img.loading = 'lazy';
+	  img.onerror = function() { this.style.display = 'none'; };
+	  return img;
 	}
-	// Desktop: hover 1 second
-	el.addEventListener('mouseenter', function(e) {
-	  var x = e.clientX, y = e.clientY;
-	  previewTimer = setTimeout(function() { showPreview(l, x, y); }, 1000);
-	});
-	el.addEventListener('mousemove', function(e) {
-	  if (!document.getElementById('preview-card').classList.contains('visible')) {
-		clearTimeout(previewTimer);
-		var x = e.clientX, y = e.clientY;
-		previewTimer = setTimeout(function() { showPreview(l, x, y); }, 1000);
-	  }
-	});
-	el.addEventListener('mouseleave', function() { hidePreview(); });
-	// Mobile: long press 1 second
-	el.addEventListener('touchstart', function(e) {
-	  var t = e.touches[0];
-	  var x = t.clientX, y = t.clientY;
-	  previewTimer = setTimeout(function() { showPreview(l, x, y); }, 1000);
-	}, { passive: true });
-	el.addEventListener('touchend', function() { hidePreview(); });
-	el.addEventListener('touchmove', function() { clearTimeout(previewTimer); }, { passive: true });
-	return el;
+	var d = document.createElement('div');
+	d.className = grid ? 'cnoimg' : 'lnoimg';
+	d.textContent = String.fromCodePoint(128279);
+	return d;
   }
   
   function mkNotes(notes, id) {
@@ -672,13 +573,12 @@ interface Env {
 	  }
 	  card.appendChild(mkActions(l));
 	  if (l.read && isGrid) { var rb = document.createElement('div'); rb.className = 'rbadge'; rb.textContent = 'Read'; card.appendChild(rb); }
-	  card.appendChild(mkImg(l.thumbnail, isGrid, l));
+	  card.appendChild(mkImg(l.thumbnail, isGrid));
 	  var body = document.createElement('div');
 	  body.className = isGrid ? 'cbody' : 'lcon';
 	  var title = document.createElement('div');
 	  title.className = isGrid ? 'ctitle' : 'ltitle';
 	  title.textContent = l.title || l.url;
-	  // Search mode: show source badge
 	  if (curSearch && curSearch.trim()) {
 		if (l.archived_at) {
 		  var sb = document.createElement('span'); sb.className = 'src-badge-archive'; sb.textContent = '📦 Archive'; title.appendChild(sb);
