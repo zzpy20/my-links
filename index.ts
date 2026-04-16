@@ -170,6 +170,8 @@ interface Env {
   .sel-restore { background: #34c759; color: white; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600; }
   .sel-private { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
   .sel-all-btn { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .sel-export { background: white; color: #0071e3; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 700; }
+  .sel-export:hover { background: #e8f1fb; }
   .tag-mgr-btn { background: white; color: #0071e3; border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
   .tag-mgr-wrap { position: relative; }
   .tag-dropdown { position: absolute; top: calc(100% + 8px); left: 0; background: white; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); min-width: 260px; z-index: 999; overflow: hidden; }
@@ -306,6 +308,7 @@ interface Env {
 	<button class="sel-archive" id="btn-sel-archive" onclick="archiveSelected()">&#128230; Archive Selected</button>
 	<button class="sel-restore" id="btn-sel-restore" onclick="restoreSelected()" style="display:none">&#8617; Restore Selected</button>
 	<button class="sel-private" id="btn-private" onclick="togglePrivateSelected()">&#128274; Make Private</button>
+	<button class="sel-export" onclick="exportLinks()">&#8681; Export</button>
 	<button class="sel-delete" onclick="deleteSelected()">&#128465; Delete Selected</button>
 	<button class="sel-clear" onclick="clearSel()">&#x2715; Cancel</button>
   </div>
@@ -881,6 +884,67 @@ interface Env {
 	if (!confirm('Make ' + ids.length + ' item(s) ' + (newVal ? 'private?' : 'public?'))) return;
 	Promise.all(ids.map(function(id){return fetch('/links/'+id+'/private',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_private:newVal})});}))
 	.then(function() { clearSel(); load(curSearch, curPage); });
+  }
+
+  function exportLinks() {
+	var ids = Array.from(selectedIds);
+	var links = ids.length > 0
+	  ? ids.map(function(id){ return cl.find(function(x){ return x.id === id; }); }).filter(Boolean)
+	  : cl;
+	if (!links.length) return;
+
+	var tabLabel = curSearch ? 'Search: ' + curSearch : (curTab === 'all' ? 'All Links' : curTab === 'archive' ? 'Archive' : 'Private');
+	var exportLabel = ids.length > 0 ? ids.length + ' selected link(s)' : links.length + ' link(s) on current page';
+
+	var rows = links.map(function(l) {
+	  var tags = l.tags ? l.tags.split(',').map(function(t){
+		return '<span style="display:inline-block;background:#f0f0f5;border-radius:4px;padding:2px 8px;font-size:11px;color:#555;margin:2px 3px 2px 0;">' + t.trim() + '</span>';
+	  }).join('') : '';
+	  var badges = '';
+	  if (l.archived_at) badges += '<span style="display:inline-block;background:#ff9500;color:white;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-left:6px;">Archive</span>';
+	  if (l.is_private) badges += '<span style="display:inline-block;background:#5856d6;color:white;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-left:6px;">Private</span>';
+	  var desc = l.description ? '<p style="font-size:13px;color:#555;margin:0 0 10px;line-height:1.5;">' + l.description + '</p>' : '';
+	  var notes = l.notes ? '<div style="font-size:13px;color:#3a3a3c;background:#f9f9fb;border-left:3px solid #0071e3;padding:8px 12px;border-radius:0 6px 6px 0;white-space:pre-wrap;margin-bottom:10px;">' + l.notes + '</div>' : '';
+	  var safeUrl = l.url.split('"').join('&quot;');
+	  var copyBtn = '<a href="' + safeUrl + '" onclick="navigator.clipboard.writeText(this.href);this.style.opacity=0.5;var e=this;setTimeout(function(){e.style.opacity=1;},800);return false;" style="font-size:11px;padding:2px 8px;border:1px solid #d2d2d7;border-radius:4px;background:white;cursor:pointer;color:#6e6e73;margin-left:8px;vertical-align:middle;text-decoration:none;display:inline-block;">Copy URL</a>';
+	  return '<div style="background:white;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,0.09);margin-bottom:16px;padding:16px;">'
+		+ '<div style="margin-bottom:8px;">'
+		+ '<a href="' + l.url + '" target="_blank" style="font-size:15px;font-weight:700;color:#1d1d1f;text-decoration:none;line-height:1.4;user-select:text;">' + (l.title || l.url) + '</a>'
+		+ badges
+		+ '</div>'
+		+ desc
+		+ '<div style="font-size:12px;color:#0071e3;margin-bottom:10px;word-break:break-all;">' + l.url + copyBtn + '</div>'
+		+ notes
+		+ (tags ? '<div style="margin-bottom:10px;">' + tags + '</div>' : '')
+		+ '<div style="font-size:11px;color:#aeaeb2;">' + fmtDate(l.created_at) + '</div>'
+		+ '</div>';
+	}).join('');
+
+	var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+	  + '<title>My Links Export</title>'
+	  + '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f7;padding:24px 16px;}'
+	  + '.wrap{max-width:680px;margin:0 auto;}'
+	  + '.hdr{margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #e5e5e5;}'
+	  + '.hdr h1{font-size:22px;font-weight:800;color:#1d1d1f;margin-bottom:4px;}'
+	  + '.hdr p{font-size:13px;color:#6e6e73;}'
+	  + 'a:hover{text-decoration:underline!important;}'
+	  + '</style>'
+	  + '</head><body><div class="wrap">'
+	  + '<div class="hdr">'
+	  + '<h1>&#128279; My Links</h1>'
+	  + '<p>' + tabLabel + ' &nbsp;&middot;&nbsp; ' + exportLabel + ' &nbsp;&middot;&nbsp; Exported ' + new Date().toLocaleString('en-AU', {timeZone:'Australia/Brisbane',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) + '</p>'
+	  + '</div>'
+	  + rows
+	  + '</div></body></html>';
+
+	var blob = new Blob([html], {type: 'text/html;charset=utf-8'});
+	var a = document.createElement('a');
+	a.href = URL.createObjectURL(blob);
+	a.download = 'my-links-' + new Date().toISOString().slice(0,10) + '.html';
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
   }
   
   function openRules() { document.getElementById('rpanel').classList.add('open'); loadRules(); }
